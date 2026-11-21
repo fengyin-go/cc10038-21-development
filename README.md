@@ -71,6 +71,30 @@ npm run dev
 | 聚合查询视图 | `aggregation_view` | 聚合视图 | 视图名称、聚合维度、指标定义 |
 | 采集血缘 | `data_lineage` | 血缘关系 | 来源批次、解析规则版本、标准化版本 |
 
+### 成组多源采集（多选来源一次提交）
+
+单数据源逐次提交之外，`/api/group-ingest` 提供多选来源的成组采集入口：
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /api/group-ingest/submit` | 多选来源一次提交，按实际来源逐条分批，返回成组回执 |
+| `POST /api/group-ingest/supplement` | 凭证通过后用原组编号补送尚缺来源 |
+| `GET /api/group-ingest/receipt/{组号}` | 成组回执：各批号、缺失来源、正式记录可见性 |
+| `GET /api/group-ingest/partial/{组号}` | 缺路期间已接收原文 + 待补交来源暂存原文 |
+| `GET /api/group-ingest/formal/{组号}` | 齐备后可见的正式记录；缺路时明确告知尚缺哪路 |
+| `GET /api/group-ingest/pending` | 本组待处理清单，关联每个源的原始行 |
+| `POST /api/group-ingest/retry-slot` | 个别来源故障时定位并重做该来源的那一批 |
+
+领域规则（实现见 `backend/app/services/group_ingest.py`）：
+
+- 每个来源在组内拥有独立分批身份（slot）和独立 INGE 批号，每条原始日志只归自己的来源；
+- 凭证未就绪的来源不建批、不落库，先在数据源登记处占用「接入资格」并暂存原文，
+  凭证通过后用原组编号补送，同一占用记录由「待确认」转「已确认」，不重复占用；
+- 同一成组编号重复提交只认已建立的分批身份，已接收来源幂等跳过、不重复落原始行；
+- 整组齐备前正式记录不可见但可确认尚缺哪路，已接收原文可先行使用；齐备后正式记录开放；
+- 故障来源在待处理清单标记异常并可按批重做。数据落在内存表 `group_ingest` /
+  `group_slot` / `group_pending`，前端入口为侧边栏「成组多源采集」（`/group-ingest`）。
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。
